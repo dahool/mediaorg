@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 COPY requirements.txt .
@@ -11,4 +13,4 @@ RUN mkdir -p /app/data
 
 ENV SERVER_PORT=5000
 
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "web_server:app"]
+CMD ["sh", "-c", "gunicorn -w 4 -b 0.0.0.0:${SERVER_PORT} --timeout 120 --access-logfile - --error-logfile - --log-level info web_server:app"]
