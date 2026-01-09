@@ -1,0 +1,286 @@
+import os
+import re
+import json
+import shutil
+import requests
+from pathlib import Path
+
+CACHE_FILE = "movie_cache.json"
+CONFIG_FILE = "config.json"
+
+VIDEO_EXTENSIONS = [".mp4", ".mkv"]
+RESOLUTION_PATTERNS = ["2160p", "1080p", "720p", "480p"]
+
+# -------------------------------
+# Configuración
+# -------------------------------
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        raise FileNotFoundError(f"No se encontró {CONFIG_FILE}")
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+config = load_config()
+TMDB_API_KEY = config.get("tmdb_api_key")
+OMDB_API_KEY = config.get("omdb_api_key")
+MEDIA_DIR = config.get("media_directory", ".")
+DRY_RUN = config.get("dry_run", True)
+
+# -------------------------------
+# Utilidades de normalización y parsing
+# -------------------------------
+
+def normalize_name(name: str) -> str:
+    """Reemplaza puntos y espacios por _, colapsa múltiples _ y recorta."""
+    name = re.sub(r"[ .]+", "_", name)
+    name = re.sub(r"_+", "_", name)
+    return name.strip("_")
+
+def extract_year_resolution(filename: str):
+    year_match = re.search(r"(19|20)\d{2}", filename)
+    year = year_match.group(0) if year_match else None
+
+    res_found = extract_resolution(filename)
+
+    return year, res_found
+
+def extract_resolution(filename: str):
+    for pat in RESOLUTION_PATTERNS:
+        if re.search(pat, filename, re.IGNORECASE):
+            return pat.upper()
+    return None
+
+def title_for_query_and_key(filename_stem: str):
+    """
+    Devuelve:
+    - title_query: para TMDB/OMDB (espacios)
+    - title_key: para coincidencia (normalizado con _)
+    Recorta al encontrar año.
+    """
+    m = re.search(r"(19|20)\d{2}", filename_stem)
+    cut = filename_stem[:m.start()] if m else filename_stem
+    title_query = re.sub(r"[^\w]", " ", cut).strip()
+    title_key = normalize_name(title_query)
+    return title_query, title_key
+
+# -------------------------------
+# Consultas externas + cache
+# -------------------------------
+
+def load_cache():
+    return json.load(open(CACHE_FILE, "r", encoding="utf-8")) if os.path.exists(CACHE_FILE) else {}
+
+def save_cache(cache):
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f, indent=2, ensure_ascii=False)
+
+def query_tmdb(title: str, year: str | None):
+    url = "https://api.themoviedb.org/3/search/movie"
+    params = {"api_key": TMDB_API_KEY, "query": title}
+    if year:
+        params["year"] = year
+    r = requests.get(url, params=params, timeout=15)
+    if r.status_code == 200:
+        data = r.json()
+        if data.get("results"):
+            movie = data["results"][0]
+            return {
+                "source": "tmdb",
+                "id": movie["id"],
+                "title": movie["title"],
+                "year": movie.get("release_date", "")[:4]
+            }
+    return None
+
+def query_omdb(title: str, year: str | None):
+    url = "http://www.omdbapi.com/"
+    params = {"apikey": OMDB_API_KEY, "t": title}
+    if year:
+        params["y"] = year
+    r = requests.get(url, params=params, timeout=15)
+    data = r.json()
+    if data.get("Response") == "True":
+        return {
+            "source": "omdb",
+            "id": data.get("imdbID"),
+            "title": data.get("Title"),
+            "year": data.get("Year")
+        }
+    return None
+
+def get_movie_info(cache: dict, filename: str):
+    base_stem = Path(filename).stem
+    if base_stem in cache:
+        return cache[base_stem]
+
+    year, _ = extract_year_resolution(base_stem)
+    title_query, _ = title_for_query_and_key(base_stem)
+
+    info = query_tmdb(title_query, year) or query_omdb(title_query, year)
+    if not info:
+        return None
+
+    # Normalizar título
+    title_norm = normalize_name(info.get("title"))
+
+    # Guardar en cache
+    cache[base_stem] = {
+        "source": info["source"],
+        "id": info["id"],
+        "title": title_norm,
+        "year": year
+    }
+    save_cache(cache)
+    return cache[base_stem]
+
+# -------------------------------
+# Construcción de nombres
+# -------------------------------
+
+def build_dir_name(title_norm: str, source_tag: str, year: str | None):
+    """
+    <Title_norm>_[<source>id-<id>]_(YYYY)
+    Sin resolución.
+    """
+    dir_name = f"{title_norm}_{source_tag}"
+    if year:
+        dir_name += f"_({year})"
+    return dir_name
+
+def build_video_base(dir_name: str, resolution: str | None):
+    """
+    Base del video sin extensión:
+    <dir_name>_[RES]
+    """
+    base = dir_name
+    if resolution:
+        base += f"_[{resolution}]"
+    return base
+
+def is_subtitle(file_name: str) -> bool:
+    return "".join(Path(file_name).suffixes).lower().endswith(".srt")
+
+def subtitle_suffix_chain(file_name: str) -> str:
+    """
+    Devuelve la cadena de sufijos del subtítulo:
+    - ".es.srt" si idioma presente
+    - ".srt" si no
+    Sin tocar el stem.
+    """
+    suffixes = Path(file_name).suffixes  # p.ej: ['.es', '.srt'] o ['.srt']
+    return "".join(suffixes)
+
+def related_to_title(title_key: str, candidate_stem: str) -> bool:
+    """
+    ¿El archivo pertenece al mismo título?
+    Compara por prefijo usando title_key normalizado.
+    """
+    cand_key = title_for_query_and_key(candidate_stem)[1]
+    return cand_key.startswith(title_key)
+
+def extra_suffix_for_non_srt(extra_name: str) -> str:
+    """
+    Para extras no .srt:
+    - Mantener el sufijo después del último '-' más la extensión.
+    - Si no hay '-', usar solo la extensión.
+    Mantener puntos correctos de extensión.
+    """
+    if "-" in extra_name:
+        suffix_part = extra_name.split("-")[-1]
+        # Normalizar espacios/puntos intermedios a _
+        # pero no tocar la extensión final (mantener el último '.' y lo que sigue)
+        stem_part = Path(suffix_part).stem
+        ext_part = Path(suffix_part).suffix
+        stem_part_norm = normalize_name(stem_part)
+        return stem_part_norm + ext_part
+    else:
+        return Path(extra_name).suffix
+
+def build_extra_name(extra: str, video_base: str, dir_name: str, resolution: str | None) -> str:
+    """
+    Construye el nombre final de un archivo extra (subtítulo o recurso adicional).
+    - Subtítulos: nombre idéntico al del video + extensión normalizada.
+    - Extras: mantienen sufijo tras '-' + extensión.
+    """
+    suffixes = Path(extra).suffixes
+
+    # Caso subtítulos
+    if is_subtitle(extra):
+        new_name = video_base
+        # Tomar sólo los últimos dos elementos de suffixes
+        if len(suffixes) >= 2 and re.fullmatch(r"\.[a-zA-Z]{2}", suffixes[-2]) and suffixes[-1].lower() == ".srt":
+            # Caso .xx.srt → mantener
+            new_name += suffixes[-2] + suffixes[-1]
+        elif suffixes and suffixes[-1].lower() == ".sub":
+            # Caso .sub → mantener
+            new_name += ".sub"
+        else:
+            # Todo lo demás → normalizar a .srt
+            new_name += ".srt"
+        return new_name
+
+    # Caso extras no subtítulos
+    suffix = extra_suffix_for_non_srt(extra)
+    if resolution:
+        return f"{video_base}-{suffix}"
+    else:
+        return f"{dir_name}-{suffix}"
+
+# -------------------------------
+# Procesamiento principal
+# -------------------------------
+
+def process_directory(path: str):
+    cache = load_cache()
+    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+
+    for f in files:
+        ext = Path(f).suffix.lower()
+        if ext not in VIDEO_EXTENSIONS:
+            continue
+
+        info = get_movie_info(cache, f)
+        if not info:
+            print(f"❌ No se encontró ID para {f}")
+            continue
+
+        resolution = extract_resolution(f)
+        base_stem = Path(f).stem
+        _, title_key = title_for_query_and_key(base_stem)
+        title_norm = info['title']
+
+        source_tag = f"[{info['source']}id-{info['id']}]"
+
+        # Directorio sin resolución
+        dir_name = build_dir_name(title_norm, source_tag, info['year'])
+        target_dir = Path(path) / dir_name
+        print(f"📂 Crear directorio: {target_dir}")
+        if not DRY_RUN:
+            target_dir.mkdir(exist_ok=True)
+
+        # Base del video (sin extensión) con resolución
+        video_base = build_video_base(dir_name, resolution)
+        new_video_name = f"{video_base}{ext}"
+        print(f"🎬 {f} -> {new_video_name}")
+        if not DRY_RUN:
+            shutil.move(os.path.join(path, f), target_dir / new_video_name)
+
+        # Procesar extras relacionados
+        for extra in files:
+            if extra == f:
+                continue
+            extra_stem = Path(extra).stem
+            if not related_to_title(title_key, extra_stem):
+                continue
+
+            new_extra_name = build_extra_name(extra, video_base, dir_name, resolution)
+            print(f"📎 {extra} -> {new_extra_name}")
+            if not DRY_RUN:
+                shutil.move(os.path.join(path, extra), target_dir / new_extra_name)
+
+# -------------------------------
+# Ejecutar
+# -------------------------------
+if __name__ == "__main__":
+    process_directory(MEDIA_DIR)

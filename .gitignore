@@ -1,0 +1,31 @@
+# --- Credenciales y Configuración ---
+# Nunca subir las llaves de API o tokens
+.env
+
+# --- Persistencia de Datos ---
+# Ignoramos la carpeta de datos por defecto donde se guardan 
+# los JSON de caché, historial y logs.
+data/
+*.json
+!requirements.txt
+!package.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.direnv/
+venv/
+ENV/
+build/
+dist/
+
+# --- Docker ---
+# Ignorar logs de contenedores y archivos temporales
+.docker/
+docker-compose.override.yml
+
+# --- Sistema Operativo ---
+.DS_Store
+Thumbs.db
