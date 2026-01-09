@@ -13,4 +13,4 @@ RUN mkdir -p /app/data
 
 ENV SERVER_PORT=5000
 
-CMD ["sh", "-c", "gunicorn -w 4 -b 0.0.0.0:${SERVER_PORT} --timeout 120 --access-logfile - --error-logfile - --log-level info web_server:app"]
+CMD ["sh", "-c", "gunicorn -w 4 -b 0.0.0.0:${SERVER_PORT} --timeout 120 --access-logfile - --error-logfile - --log-level info --capture-output web_server:app"]

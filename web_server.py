@@ -6,6 +6,8 @@ from main import process_directory
 
 app = Flask(__name__)
 
+print(f"🚀 Ready (Puerto: {config.PORT})", flush=True)
+
 @app.route('/', methods=['GET'])
 def health_check():
     return jsonify({
