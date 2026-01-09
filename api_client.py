@@ -1,4 +1,7 @@
 import requests
+import config_loader as config
+
+logger = config.logger
 
 def query_tmdb(title: str, year: str | None, api_key: str):
     url = "https://api.themoviedb.org/3/search/movie"
@@ -18,7 +21,7 @@ def query_tmdb(title: str, year: str | None, api_key: str):
                     "year": movie.get("release_date", "")[:4]
                 }
     except Exception as e:
-        print(f"Error consultando TMDB: {e}")
+        logger.error(f"Error consultando TMDB: {e}")
     return None
 
 def query_omdb(title: str, year: str | None, api_key: str):
@@ -37,5 +40,5 @@ def query_omdb(title: str, year: str | None, api_key: str):
                 "year": data.get("Year")
             }
     except Exception as e:
-        print(f"Error consultando OMDB: {e}")
+        logger.error(f"Error consultando OMDB: {e}")
     return None

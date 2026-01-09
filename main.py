@@ -6,6 +6,8 @@ import utils
 import api_client
 import config_loader as config
 
+logger = config.logger
+
 CACHE_FILE = config.CACHE_FILE
 HISTORY_FILE = config.HISTORY_FILE
 VIDEO_EXTENSIONS = [".mp4", ".mkv"]
@@ -42,7 +44,7 @@ def process_directory(source_path, destination_path):
     history = set(utils.load_json(HISTORY_FILE, []))
     all_files_info = []
 
-    print(f"🔍 Escaneando: {source_path}...")
+    logger.info(f"🔍 Escaneando: {source_path}...")
     for root, _, filenames in os.walk(source_path):
         if os.path.abspath(root).startswith(destination_path) and destination_path != source_path:
             continue
@@ -72,7 +74,7 @@ def process_directory(source_path, destination_path):
         video_base = utils.build_video_base(dir_name, resolution)
         new_video_name = f"{video_base}{Path(vfile['name']).suffix.lower()}"
         
-        print(f"🎬 {ACTION.capitalize()}: {vfile['name']} -> {new_video_name}")
+        logger.info(f"🎬 {ACTION.capitalize()}: {vfile['name']} -> {new_video_name}")
         if not DRY_RUN:
             transfer_func(vfile["full_path"], target_dir / new_video_name)
             history.add(vfile["full_path"])
@@ -90,7 +92,7 @@ def process_directory(source_path, destination_path):
                 if new_extra_name in processed_destinations:
                     continue
                 
-                print(f"  📎 Extra: {extra_file['name']} -> {new_extra_name}")
+                logger.info(f"  📎 Extra: {extra_file['name']} -> {new_extra_name}")
                 if not DRY_RUN:
                     try:
                         transfer_func(extra_file["full_path"], target_dir / new_extra_name)
@@ -98,7 +100,7 @@ def process_directory(source_path, destination_path):
                         utils.save_json(HISTORY_FILE, list(history))
                         processed_destinations.add(new_extra_name)
                     except Exception as e:
-                        print(f"  Error: {e}")
+                        logger.error(f"  Error: {e}")
 
 if __name__ == "__main__":
     process_directory(MEDIA_DIR, OUTPUT_DIR)
