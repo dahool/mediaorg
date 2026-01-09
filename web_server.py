@@ -6,6 +6,12 @@ from main import process_directory
 
 app = Flask(__name__)
 
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({
+        "status": "online",
+    }), 200
+
 @app.route('/copy_torrent', methods=['POST'])
 def copy_torrent():
     data = request.json if request.is_json else request.form
