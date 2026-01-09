@@ -36,7 +36,7 @@ def copy_torrent():
             return jsonify({
                 "status": "success", 
                 "message": f"Procesamiento iniciado para {name}",
-                "processed": result
+                "processed": result,
                 "folder": folder
             }), 201
         except Exception as e:
