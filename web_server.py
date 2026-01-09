@@ -31,13 +31,14 @@ def copy_torrent():
         logger.info(f"✅ Categoría '{category}'. Iniciando proceso para: {name}")
         
         try:
-            process_directory(folder, config.OUTPUT_DIR)
+            result = process_directory(folder, config.OUTPUT_DIR)
             
             return jsonify({
                 "status": "success", 
                 "message": f"Procesamiento iniciado para {name}",
+                "processed": result
                 "folder": folder
-            }), 200
+            }), 201
         except Exception as e:
             logger.error(f"❌ Error procesando {name}: {e}")
             return jsonify({"status": "error", "message": str(e)}), 500
