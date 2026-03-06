@@ -1,5 +1,4 @@
 import os
-import json
 from flask import Flask, request, jsonify
 import config_loader as config
 from main import process_directory
@@ -10,7 +9,11 @@ logger = config.logger
 
 logger.info(f"🚀 Ready (Puerto: {config.PORT})")
 
-@app.route('/', methods=['GET'])
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
+
+@app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({
         "status": "online",
@@ -45,6 +48,21 @@ def copy_torrent():
     else:
         logger.info(f"ℹ️ Categoría '{category}' no incluída.")
         return jsonify({"status": "ignored", "message": "Categoría no permitida"}), 200
+
+@app.route('/directories', methods=['GET'])
+def list_directories():
+    try:
+        # Listamos solo directorios dentro de MEDIA_DIR
+        base_path = config.MEDIA_DIR
+        directories = [
+            d for d in os.listdir(base_path) 
+            if os.path.isdir(os.path.join(base_path, d))
+        ]
+        directories.sort() # Ordenados por nombre
+        return jsonify(directories), 200
+    except Exception as e:
+        logger.error(f"❌ Error listando directorios: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config.PORT, debug=False)

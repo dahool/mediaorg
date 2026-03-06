@@ -8,7 +8,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY *.py .
+COPY static/ ./static/
 
+RUN python test_main.py
 RUN mkdir -p /app/data
 
 ENV SERVER_PORT=5000

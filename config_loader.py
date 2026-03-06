@@ -24,7 +24,7 @@ OUTPUT_DIR = os.path.abspath(get_env("OUTPUT_DIRECTORY", MEDIA_DIR))
 ACTION = get_env("ACTION", "move").lower()
 DRY_RUN = get_env("DRY_RUN", "True").lower() in ("true", "1", "yes")
 
-ALLOWED_CATEGORIES = get_env("ALLOWED_CATEGORIES", "").split(",")
+ALLOWED_CATEGORIES = get_env("ALLOWED_CATEGORIES", "").split(",") + ["*"]
 PORT = int(get_env("SERVER_PORT", 5000))
 
 logging.basicConfig(

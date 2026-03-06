@@ -2,6 +2,7 @@ import os
 import re
 import json
 from pathlib import Path
+import pycountry
 
 RESOLUTION_PATTERNS = ["2160p", "1080p", "720p", "480p"]
 
@@ -63,3 +64,27 @@ def build_extra_name(extra_name: str, video_base: str) -> str:
     stem = Path(extra_name).stem
     suffix_part = stem.split("-")[-1] if "-" in stem else "extra"
     return f"{video_base}-{normalize_name(suffix_part)}{ext}"
+
+def get_iso_language_code(name):
+    """
+    Intenta convertir un nombre o código de idioma a ISO 639-1 (2 dígitos).
+    Ejemplo: 'Spanish' -> 'es', 'spa' -> 'es', 'es' -> 'es'
+    """
+    name = name.lower().strip()
+    if len(name) == 2:
+        return name # Asumimos que ya es ISO 2-char
+    
+    try:
+        # Intentar por código de 3 letras
+        if len(name) == 3:
+            lang = pycountry.languages.get(alpha_3=name)
+        else:
+            # Intentar por nombre completo
+            lang = pycountry.languages.lookup(name)
+        
+        if lang and hasattr(lang, 'alpha_2'):
+            return lang.alpha_2
+    except (LookupError, AttributeError):
+        pass
+    
+    return name # Si no se encuentra, devolvemos el original como fallback

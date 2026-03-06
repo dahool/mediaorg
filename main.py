@@ -49,6 +49,7 @@ def get_all_files(source_path, destination_path):
         if os.path.abspath(root).startswith(str(destination_path)) and destination_path != source_path:
             continue
         for f in filenames:
+            logger.info(f"Found {f}")
             abs_f = os.path.abspath(os.path.join(root, f))
             files_info.append({
                 "name": f, 
@@ -106,7 +107,7 @@ def transfer_file(source, target, history):
         logger.error(f"❌ Error transfiriendo {source}: {e}")
         return False
 
-def process_extras(all_files, vfile, title_key, video_base, target_dir, history):
+def process_extras_old(all_files, vfile, title_key, video_base, target_dir, history):
     """Busca y transfiere archivos adjuntos (subs, nfo, etc)."""
     processed_extras = []
     for extra in all_files:
@@ -117,6 +118,39 @@ def process_extras(all_files, vfile, title_key, video_base, target_dir, history)
             new_name = utils.build_extra_name(extra["name"], video_base)
             if transfer_file(extra["full_path"], target_dir / new_name, history):
                 processed_extras.append(new_name)
+    return processed_extras
+
+def process_extras(all_files, vfile, title_key, video_base, target_dir, history):
+    """Busca y transfiere archivos adjuntos con lógica especial para subtítulos."""
+    processed_extras = []
+    video_stem = vfile["stem"]
+
+    for extra in all_files:
+        if extra["full_path"] in history or extra["full_path"] == vfile["full_path"]:
+            continue
+        
+        extra_stem = extra["stem"]
+        # --- AQUÍ ESTABA EL ERROR: Definimos la variable que falta ---
+        extra_name_lower = extra["name"].lower() 
+        is_subtitle = extra["extension"] == ".srt"
+
+        # Ahora la variable ya existe para esta comparación
+        if is_subtitle and "sdh" in extra_name_lower:
+            logger.info(f"⏭️ Ignorando subtítulo SDH: {extra['name']}")
+            continue
+
+        # ... resto del código sin cambios ...
+        if utils.title_for_query_and_key(extra_stem)[1].startswith(title_key):
+            if is_subtitle and extra_stem != video_stem:
+                lang_part = extra_stem.split('.')[-1].split('_')[-1].split(' ')[-1]
+                iso_lang = utils.get_iso_language_code(lang_part)
+                new_name = f"{video_base}.{iso_lang}{extra['extension']}"
+            else:
+                new_name = utils.build_extra_name(extra["name"], video_base)
+
+            if transfer_file(extra["full_path"], target_dir / new_name, history):
+                processed_extras.append(new_name)
+                
     return processed_extras
 
 def process_directory(source_path, destination_path):
@@ -131,8 +165,9 @@ def process_directory(source_path, destination_path):
     results = []
     for vfile in video_files:
         if vfile["full_path"] in history:
+            logger.warning(f"{vfile} already processed")
             continue
-            
+        logger.info(f"Processing {vfile}")    
         processed = process_single_video(vfile, all_files, cache, history, destination_path)
         results.extend(processed)
         
