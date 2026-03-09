@@ -2,6 +2,7 @@ import os
 from flask import Flask, request, jsonify
 import config_loader as config
 from main import process_directory
+from pathlib import Path
 
 app = Flask(__name__)
 
@@ -52,14 +53,25 @@ def copy_torrent():
 @app.route('/directories', methods=['GET'])
 def list_directories():
     try:
-        # Listamos solo directorios dentro de MEDIA_DIR
-        base_path = config.MEDIA_DIR
-        directories = [
-            d for d in os.listdir(base_path) 
-            if os.path.isdir(os.path.join(base_path, d))
-        ]
-        directories.sort() # Ordenados por nombre
-        return jsonify(directories), 200
+        base_path = Path(config.MEDIA_DIR)
+
+        def build_tree(current_path):
+            node = {
+                "name": current_path.name if current_path.name else "root",
+                "children": []
+            }
+            try:
+                for item in sorted(current_path.iterdir()):
+                    if item.is_dir():
+                        node["children"].append(build_tree(item))
+            except PermissionError:
+                pass
+                
+            return node
+
+        tree = build_tree(base_path)
+        
+        return jsonify(tree["children"]), 200
     except Exception as e:
         logger.error(f"❌ Error listando directorios: {e}")
         return jsonify({"error": str(e)}), 500
