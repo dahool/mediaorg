@@ -42,12 +42,21 @@ def get_movie_info(cache, filename):
 def get_all_files(source_path, destination_path):
     """Escanea el directorio y retorna una lista de diccionarios con info de archivos."""
     files_info = []
-    logger.info(f"🔍 Escaneando: {source_path}...")
     
-    for root, _, filenames in os.walk(source_path):
-        # Evitar escanear el destino si está dentro del origen
-        if os.path.abspath(root).startswith(str(destination_path)) and destination_path != source_path:
+    # 1. Forzamos a que ambas rutas sean absolutas y resueltas desde el inicio
+    src_abs = Path(source_path).resolve()
+    dest_abs = Path(destination_path).resolve()
+    
+    logger.info(f"🔍 Escaneando ruta absoluta: {src_abs}...")
+    
+    for root, _, filenames in os.walk(src_abs):
+        current_root_abs = Path(root).resolve()
+        
+        # 2. La comparación ahora es segura porque ambas son absolutas
+        if current_root_abs.is_relative_to(dest_abs) and dest_abs != src_abs:
+            logger.warning(f"⚠️ Saltando {current_root_abs} (está dentro del destino)")
             continue
+            
         for f in filenames:
             logger.info(f"Found {f}")
             abs_f = os.path.abspath(os.path.join(root, f))
@@ -57,6 +66,7 @@ def get_all_files(source_path, destination_path):
                 "stem": Path(f).stem,
                 "extension": Path(f).suffix.lower()
             })
+            
     return files_info
 
 def process_single_video(vfile, all_files, cache, history, destination_path):
