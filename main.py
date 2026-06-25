@@ -153,13 +153,26 @@ def process_extras(all_files, vfile, title_key, video_base, target_dir, history)
                 
     return processed_extras
 
+def get_absolute_path(media_dir, folder):
+    # Convertimos ambos inputs a objetos Path absolutos y resueltos
+    base_path = Path(media_dir).resolve()
+    folder_path = Path(folder).resolve()
+    
+    # Si 'folder' ya está dentro de 'base_path', no los unimos.
+    # .is_relative_to() devuelve True si folder_path empieza con base_path
+    if folder_path.is_relative_to(base_path):
+        return folder_path
+    
+    # Si no es parte, los unimos y resolvemos
+    return Path(base_path, folder).resolve()
+
 def process_directory(source_path, destination_path):
     # Cargar estado
     cache = utils.load_json(CACHE_FILE, {})
     history = set(utils.load_json(HISTORY_FILE, []))
     
     # Obtener archivos
-    all_files = get_all_files(source_path, destination_path)
+    all_files = get_all_files(get_absolute_path(config.MEDIA_DIR, source_path), destination_path)
     video_files = [f for f in all_files if f["extension"] in VIDEO_EXTENSIONS]
     
     results = []
