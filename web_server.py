@@ -55,6 +55,8 @@ def list_directories():
     try:
         base_path = Path(config.MEDIA_DIR)
 
+        logger.info(f"Listing {base_path}")
+        
         def build_tree(current_path):
             node = {
                 "name": current_path.name if current_path.name else "root",
@@ -64,7 +66,8 @@ def list_directories():
                 for item in sorted(current_path.iterdir()):
                     if item.is_dir():
                         node["children"].append(build_tree(item))
-            except PermissionError:
+            except PermissionError as e:
+                logger.error(f"❌ Error reading {current_path}: {e}")
                 pass
                 
             return node
